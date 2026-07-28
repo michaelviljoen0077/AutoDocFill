@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="database" path="autodocfill_db" />
+    <exclude domain="sharedpref" path="autodocfill_secure_prefs" />
+    <exclude domain="file" path="pdfs/" />
+    <exclude domain="file" path="signatures/" />
+</full-backup-content>

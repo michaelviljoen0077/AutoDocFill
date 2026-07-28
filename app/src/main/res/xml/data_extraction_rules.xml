@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="autodocfill_db" />
+        <exclude domain="sharedpref" path="autodocfill_secure_prefs" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="autodocfill_db" />
+        <exclude domain="sharedpref" path="autodocfill_secure_prefs" />
+    </device-transfer>
+</data-extraction-rules>

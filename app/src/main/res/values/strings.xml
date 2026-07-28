@@ -1,0 +1,44 @@
+<resources>
+    <string name="app_name">AutoDocFill</string>
+    <string name="profile_vault">Profile Vault</string>
+    <string name="documents">Documents</string>
+    <string name="history">History</string>
+    <string name="settings">Settings</string>
+    
+    <!-- Profile strings -->
+    <string name="create_profile">Create Profile</string>
+    <string name="edit_profile">Edit Profile</string>
+    <string name="profile_name">Profile Name</string>
+    <string name="first_name">First Name</string>
+    <string name="last_name">Last Name</string>
+    <string name="email">Email</string>
+    <string name="phone_number">Phone Number</string>
+    <string name="address">Address</string>
+    <string name="city">City</string>
+    <string name="state">State</string>
+    <string name="zip_code">ZIP Code</string>
+    
+    <!-- Document strings -->
+    <string name="upload_pdf">Upload PDF</string>
+    <string name="autofill">Autofill</string>
+    <string name="export">Export</string>
+    <string name="sign">Sign</string>
+    <string name="processing">Processing...</string>
+    <string name="fields_detected">%1$d fields detected</string>
+    <string name="pages_count">%1$d pages</string>
+    
+    <!-- Messages -->
+    <string name="profile_created">Profile created successfully</string>
+    <string name="profile_updated">Profile updated successfully</string>
+    <string name="profile_deleted">Profile deleted successfully</string>
+    <string name="document_processed">Document processed successfully</string>
+    <string name="autofill_complete">Autofill complete</string>
+    <string name="export_complete">Export complete</string>
+    
+    <!-- Errors -->
+    <string name="error_processing">Error processing document</string>
+    <string name="error_autofill">Error during autofill</string>
+    <string name="error_export">Error exporting document</string>
+    <string name="error_invalid_email">Invalid email format</string>
+    <string name="error_invalid_phone">Invalid phone number format</string>
+</resources>
