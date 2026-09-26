@@ -21,3 +21,12 @@
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
+
+# SQLCipher (native code looks these classes up by name)
+-keep class net.sqlcipher.** { *; }
+-dontwarn net.sqlcipher.**
+
+# Gson TypeTokens used by Room type converters need their generic signatures
+-keepattributes Signature
+-keep class * extends com.google.gson.reflect.TypeToken
+-keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken

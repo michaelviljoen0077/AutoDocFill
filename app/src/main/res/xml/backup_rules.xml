@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Used on Android 11 and lower. All personal data stays on the device. -->
 <full-backup-content>
-    <exclude domain="database" path="autodocfill_db" />
-    <exclude domain="sharedpref" path="autodocfill_secure_prefs" />
-    <exclude domain="file" path="pdfs/" />
-    <exclude domain="file" path="signatures/" />
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
 </full-backup-content>

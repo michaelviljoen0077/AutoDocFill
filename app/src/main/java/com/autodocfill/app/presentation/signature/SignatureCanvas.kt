@@ -15,13 +15,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+
+private const val STROKE_WIDTH = 6f
 
 /**
  * Signature capture canvas composable
@@ -32,9 +35,11 @@ fun SignatureCanvas(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var paths by remember { mutableStateOf(listOf<PathData>()) }
-    var currentPath by remember { mutableStateOf<PathData?>(null) }
-    
+    // Each stroke is the list of points from one finger-down to finger-up
+    val strokes = remember { mutableStateListOf<List<Offset>>() }
+    var currentStroke by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -49,90 +54,58 @@ fun SignatureCanvas(
         ) {
             Text(
                 "Sign Here",
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.Black
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = { paths = emptyList() }) {
-                    Icon(Icons.Filled.Clear, "Clear")
-                }
+            IconButton(onClick = { strokes.clear() }) {
+                Icon(Icons.Filled.Clear, "Clear", tint = Color.Black)
             }
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         // Canvas
-        Box(
+        Canvas(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .background(Color.White)
+                .onSizeChanged { canvasSize = it }
                 .pointerInput(Unit) {
                     detectDragGestures(
-                        onDragStart = { offset ->
-                            currentPath = PathData(
-                                path = Path().apply { moveTo(offset.x, offset.y) }
-                            )
-                        },
+                        onDragStart = { offset -> currentStroke = listOf(offset) },
                         onDrag = { change, _ ->
-                            currentPath?.let { pathData ->
-                                pathData.path.lineTo(change.position.x, change.position.y)
-                                currentPath = pathData.copy()
-                            }
+                            change.consume()
+                            currentStroke = currentStroke + change.position
                         },
                         onDragEnd = {
-                            currentPath?.let { pathData ->
-                                paths = paths + pathData
-                                currentPath = null
-                            }
-                        }
+                            if (currentStroke.isNotEmpty()) strokes.add(currentStroke)
+                            currentStroke = emptyList()
+                        },
+                        onDragCancel = { currentStroke = emptyList() }
                     )
                 }
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                // Draw background
-                drawRect(
-                    color = Color(0xFFF5F5F5),
-                    size = size
+            drawRect(color = Color(0xFFF5F5F5), size = size)
+
+            // Signature line
+            drawLine(
+                color = Color.Gray,
+                start = Offset(50f, size.height - 100f),
+                end = Offset(size.width - 50f, size.height - 100f),
+                strokeWidth = 2f
+            )
+
+            (strokes + listOf(currentStroke)).forEach { points ->
+                drawPath(
+                    path = points.toPath(),
+                    color = Color.Black,
+                    style = Stroke(width = STROKE_WIDTH, cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
-                
-                // Draw signature line
-                drawLine(
-                    color = Color.Gray,
-                    start = Offset(50f, size.height - 100f),
-                    end = Offset(size.width - 50f, size.height - 100f),
-                    strokeWidth = 2f
-                )
-                
-                // Draw all paths
-                paths.forEach { pathData ->
-                    drawPath(
-                        path = pathData.path,
-                        color = Color.Black,
-                        style = Stroke(
-                            width = 5f,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
-                    )
-                }
-                
-                // Draw current path
-                currentPath?.let { pathData ->
-                    drawPath(
-                        path = pathData.path,
-                        color = Color.Black,
-                        style = Stroke(
-                            width = 5f,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
-                    )
-                }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         // Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -145,14 +118,9 @@ fun SignatureCanvas(
                 Text("Cancel")
             }
             Button(
-                onClick = {
-                    // Convert canvas to bitmap
-                    // In production, capture the actual canvas bitmap
-                    // For now, just call the callback
-                    // onSignatureComplete(bitmap)
-                },
+                onClick = { onSignatureComplete(renderSignature(strokes, canvasSize)) },
                 modifier = Modifier.weight(1f),
-                enabled = paths.isNotEmpty()
+                enabled = strokes.isNotEmpty() && canvasSize != IntSize.Zero
             ) {
                 Icon(Icons.Filled.Done, null)
                 Spacer(modifier = Modifier.width(4.dp))
@@ -162,11 +130,48 @@ fun SignatureCanvas(
     }
 }
 
+private fun List<Offset>.toPath(): Path = Path().apply {
+    if (isEmpty()) return@apply
+    moveTo(first().x, first().y)
+    drop(1).forEach { lineTo(it.x, it.y) }
+}
+
 /**
- * Path data for signature drawing
+ * Draw the strokes onto a transparent bitmap cropped to the signature's bounds,
+ * so it can be stamped onto a PDF without covering the page.
  */
-data class PathData(
-    val path: Path,
-    val color: Color = Color.Black,
-    val strokeWidth: Float = 5f
-)
+private fun renderSignature(strokes: List<List<Offset>>, canvasSize: IntSize): Bitmap {
+    val points = strokes.flatten()
+    val padding = STROKE_WIDTH * 2
+    val left = (points.minOf { it.x } - padding).coerceAtLeast(0f)
+    val top = (points.minOf { it.y } - padding).coerceAtLeast(0f)
+    val right = (points.maxOf { it.x } + padding).coerceAtMost(canvasSize.width.toFloat())
+    val bottom = (points.maxOf { it.y } + padding).coerceAtMost(canvasSize.height.toFloat())
+
+    val bitmap = Bitmap.createBitmap(
+        (right - left).toInt().coerceAtLeast(1),
+        (bottom - top).toInt().coerceAtLeast(1),
+        Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = Paint().apply {
+        color = android.graphics.Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = STROKE_WIDTH
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        isAntiAlias = true
+    }
+
+    strokes.forEach { stroke ->
+        if (stroke.size == 1) {
+            canvas.drawPoint(stroke[0].x - left, stroke[0].y - top, paint)
+        } else {
+            val path = android.graphics.Path()
+            path.moveTo(stroke[0].x - left, stroke[0].y - top)
+            stroke.drop(1).forEach { path.lineTo(it.x - left, it.y - top) }
+            canvas.drawPath(path, paint)
+        }
+    }
+    return bitmap
+}

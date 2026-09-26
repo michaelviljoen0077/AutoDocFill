@@ -30,10 +30,19 @@ fun ProfileListScreen(
 ) {
     val profiles by viewModel.profiles.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
-    val activeProfile by viewModel.activeProfile.collectAsState()
     
     var showCreateDialog by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf<Profile?>(null) }
+    var deletingProfile by remember { mutableStateOf<Profile?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val message = uiState.errorMessage ?: uiState.successMessage
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearMessages()
+        }
+    }
     
     Scaffold(
         topBar = {
@@ -53,6 +62,7 @@ fun ProfileListScreen(
                 )
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showCreateDialog = true },
@@ -82,12 +92,12 @@ fun ProfileListScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(profiles) { profile ->
+                        items(profiles, key = { it.id }) { profile ->
                             ModernProfileCard(
                                 profile = profile,
-                                isActive = profile.id == activeProfile?.id,
+                                isActive = profile.isActive,
                                 onEditClick = { editingProfile = profile },
-                                onDeleteClick = { viewModel.deleteProfile(profile) },
+                                onDeleteClick = { deletingProfile = profile },
                                 onSetActiveClick = { viewModel.setActiveProfile(profile) }
                             )
                         }
@@ -96,32 +106,9 @@ fun ProfileListScreen(
                     }
                 }
             }
-            
-            // Success/Error messages
-            uiState.successMessage?.let { message ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(message)
-                }
-            }
-            
-            uiState.errorMessage?.let { message ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
-                }
-            }
         }
     }
-    
+
     if (showCreateDialog || editingProfile != null) {
         ModernProfileFormDialog(
             profile = editingProfile,
@@ -137,6 +124,34 @@ fun ProfileListScreen(
                 }
                 showCreateDialog = false
                 editingProfile = null
+            }
+        )
+    }
+
+    deletingProfile?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { deletingProfile = null },
+            icon = { Icon(Icons.Filled.Delete, null) },
+            title = { Text("Delete Profile?") },
+            text = { Text("Delete \"${profile.profileName}\" and all of its stored details? This cannot be undone.") },
+            confirmButton = {
+                FilledTonalButton(
+                    onClick = {
+                        viewModel.deleteProfile(profile)
+                        deletingProfile = null
+                    },
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingProfile = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }

@@ -26,7 +26,7 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE profileId = :profileId ORDER BY uploadedAt DESC")
     fun getDocumentsByProfile(profileId: Long): Flow<List<Document>>
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertDocument(document: Document): Long
     
     @Update

@@ -1,7 +1,7 @@
 package com.autodocfill.app.domain.signature
 
-import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import com.itextpdf.io.image.ImageDataFactory
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
@@ -9,7 +9,6 @@ import com.itextpdf.kernel.pdf.PdfWriter
 import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
 import com.itextpdf.layout.element.Paragraph
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -23,9 +22,7 @@ import javax.inject.Singleton
  * Places signature and date on PDF documents
  */
 @Singleton
-class SignaturePlacer @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
+class SignaturePlacer @Inject constructor() {
     
     /**
      * Add signature and date to PDF
@@ -77,7 +74,8 @@ class SignaturePlacer @Inject constructor(
             true
             
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to sign $inputPdfPath", e)
+            File(outputPdfPath).delete()
             false
         }
     }
@@ -108,12 +106,14 @@ class SignaturePlacer @Inject constructor(
             
             pdfDocument.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to read $pdfPath", e)
         }
         
         positions
     }
 }
+
+private const val TAG = "SignaturePlacer"
 
 /**
  * Data class for signature position on PDF

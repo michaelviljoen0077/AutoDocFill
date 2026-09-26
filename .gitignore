@@ -1,43 +1,23 @@
-*.iml
-.gradle
-/local.properties
-/.idea/
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+# Gradle
+.gradle/
+build/
 local.properties
 
-# Android Studio
+# Android Studio / IntelliJ
 *.iml
 .idea/
-.gradle/
-build/
 captures/
+.externalNativeBuild/
+.cxx/
 
-# Keystore files
+# Signing
 *.jks
 *.keystore
-
-# Signing configs
 signing.properties
 
-# Local configuration
-local.properties
-
-# Log Files
+# Logs
 *.log
 
-# Generated files
-bin/
-gen/
-out/
-
-# Gradle files
-.gradle/
-build/
-
-# OS-specific files
+# OS
 .DS_Store
 Thumbs.db

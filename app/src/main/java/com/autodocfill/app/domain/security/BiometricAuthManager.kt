@@ -60,12 +60,8 @@ class BiometricAuthManager @Inject constructor(
                     }
                 }
                 
-                override fun onAuthenticationFailed() {
-                    super.onAuthenticationFailed()
-                    if (continuation.isActive) {
-                        continuation.resume(BiometricResult.Failed)
-                    }
-                }
+                // onAuthenticationFailed() is not terminal: the prompt stays open so the
+                // user can retry, and a final failure is reported through onAuthenticationError()
             }
         )
         
@@ -88,6 +84,5 @@ class BiometricAuthManager @Inject constructor(
  */
 sealed class BiometricResult {
     object Success : BiometricResult()
-    object Failed : BiometricResult()
     data class Error(val message: String) : BiometricResult()
 }

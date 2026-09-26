@@ -49,11 +49,20 @@ android {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+ksp {
+    // Export Room schemas so future migrations can be written and tested
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -91,6 +100,7 @@ dependencies {
     // Security & Biometric
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
 
     // PDF Processing - iText Community
     implementation("com.itextpdf:itext7-core:7.2.5")
@@ -98,16 +108,10 @@ dependencies {
     // ML Kit OCR (on-device)
     implementation("com.google.mlkit:text-recognition:16.0.0")
 
-    // WorkManager for background jobs
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
-
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
-    // Datastore
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-    
     // Gson for JSON serialization
     implementation("com.google.code.gson:gson:2.10.1")
 
