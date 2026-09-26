@@ -1,127 +1,69 @@
 # AutoDocFill
 
-Android native app for automated PDF form filling with offline-first, privacy-focused design.
+Android app that fills in PDF forms from a locally stored profile. Offline-first and privacy-focused: your profile and documents stay on the device.
 
 ## Features
 
-- **Profile Vault**: Securely store personal information locally with SQLCipher encryption
-- **PDF Processing**: Upload and process fillable AcroForm PDFs and scanned documents
-- **OCR Support**: Extract text from scanned PDFs using ML Kit (on-device)
-- **Autofill Engine**: Intelligent field mapping with confidence scoring
-- **Validation**: Built-in validation for email, phone, dates, and ID formats
-- **Signature Capture**: Draw signatures on touch screen
-- **Audit Logging**: Comprehensive append-only audit trail
-- **Biometric Auth**: Fingerprint/face authentication for sensitive operations
+- **Profile vault**: store personal, contact, address, employment and ID details (plus custom fields) in an encrypted database. Supports multiple profiles; the *active* one is used for autofill.
+- **PDF import**: pick any PDF through the system file picker; it is copied into app-private storage.
+- **Field detection**: reads AcroForm fields (text, checkbox, radio, dropdown, signature) from fillable PDFs. Scanned PDFs are run through on-device OCR (ML Kit) to find labels like `Name: ____`.
+- **Autofill**: maps field names to profile values with a confidence score, validates emails, phone numbers, dates, postal codes and ID numbers, and never overwrites values you edited by hand.
+- **Manual edit**: review, search and correct every field value.
+- **Export & sign**: write the values into a copy of the PDF, optionally stamp a hand-drawn signature (placed on the form's signature field if it has one), then save or share it via the Android share sheet.
+- **History**: an audit log of uploads, autofills, edits, exports and signatures.
 
-## Tech Stack
+### Known limitations
 
-- **Language**: Kotlin
-- **UI**: Jetpack Compose + Material Design 3
-- **Architecture**: MVVM + Clean Architecture
-- **DI**: Hilt
-- **Database**: Room + SQLCipher (encrypted)
-- **PDF**: iText 7 Community
-- **OCR**: ML Kit Text Recognition (on-device)
-- **Security**: Android Keystore, EncryptedSharedPreferences, BiometricPrompt
+- Scanned (non-fillable) PDFs can be analysed, but values can't be written back into them yet, so they can't be exported.
+- `BiometricAuthManager` exists but is not wired into any screen yet.
 
-## Privacy & Security
+## Privacy & security
 
-- ✅ All data stored locally on device
-- ✅ SQLCipher database encryption at rest
-- ✅ No external API calls or data transmission
-- ✅ Biometric authentication support
-- ✅ Sensitive fields require manual approval
+- Profiles and documents are stored only on the device; the app never uploads them. OCR runs on-device.
+- The Room database is encrypted with SQLCipher. The passphrase is generated with `SecureRandom` and kept in `EncryptedSharedPreferences` (Android Keystore).
+- Cloud backup and device-to-device transfer are disabled so personal data can't leave the device through backups.
+- Sensitive values (ID/passport/licence/tax numbers, date of birth) are flagged for review and are not copied into the audit log.
 
-## Build Instructions
+## Tech stack
 
-### Prerequisites
+Kotlin · Jetpack Compose + Material 3 · MVVM · Hilt · Room + SQLCipher · iText 7 · ML Kit Text Recognition · Coroutines/Flow
 
-- Android Studio Hedgehog or later
-- JDK 17
-- Android SDK 26+ (target SDK 34)
+## Building
 
-### Build Steps
-
-1. Clone the repository
-2. Open in Android Studio
-3. Sync Gradle
-4. Run on device or emulator (min API 26)
+Requirements: JDK 17 and the Android SDK (compileSdk 34, minSdk 26). Android Studio Hedgehog or newer works out of the box.
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleDebug        # build the debug APK
+./gradlew testDebugUnitTest    # run unit tests
+./gradlew assembleRelease      # release build (needs a signing config)
 ```
 
-### Release Build
+CI (`.github/workflows/android.yml`) builds the debug APK and runs the unit tests on every push and pull request.
 
-```bash
-./gradlew assembleRelease
-```
+Room schemas are exported to `app/schemas/` on build; commit them so future database migrations can be written and tested. The database currently uses `fallbackToDestructiveMigration()`, which wipes data on a schema change — replace it with real migrations before shipping.
 
-## Project Structure
+## Project structure
 
 ```
-app/
+app/src/main/java/com/autodocfill/app/
 ├── data/
-│   ├── local/          # Room database, DAOs, converters
-│   └── model/          # Data entities
+│   ├── local/          # Room database, DAOs, type converters
+│   └── model/          # Entities: Profile, Document, FieldMapping, AuditLog
+├── di/                 # Hilt modules (encrypted database)
 ├── domain/
-│   ├── pdf/            # PDF processing, OCR, autofill
-│   ├── repository/     # Data repositories
+│   ├── pdf/            # Field detection, matching, validation, autofill, OCR, PDF writing
+│   ├── repository/     # Repositories over the DAOs
 │   ├── security/       # Biometric auth
-│   └── signature/      # Signature management
-├── presentation/
-│   ├── document/       # Document screens & ViewModels
-│   ├── profile/        # Profile screens & ViewModels
-│   ├── signature/      # Signature canvas
-│   ├── navigation/     # Navigation setup
-│   └── theme/          # Material Design theme
-└── di/                 # Hilt modules
+│   └── signature/      # Signature storage and placement on PDFs
+└── presentation/
+    ├── document/       # Document list, manual edit
+    ├── history/        # Audit log
+    ├── navigation/     # Bottom navigation
+    ├── profile/        # Profile list and editor
+    ├── signature/      # Signature drawing canvas
+    └── theme/          # Material 3 theme
 ```
-
-## MVP Roadmap
-
-### Phase 1: Foundation (Weeks 1-2) ✅
-- [x] Project setup with dependencies
-- [x] Room database with SQLCipher encryption
-- [x] Profile Vault data models and UI
-- [x] PDF upload and storage
-
-### Phase 2: Autofill (Weeks 3-4) ✅
-- [x] PDF field detection (AcroForm)
-- [x] Autofill engine with validation
-- [x] Field mapping with confidence scores
-- [x] Review/edit UI
-
-### Phase 3: Signature & Export (Weeks 5-6) ✅
-- [x] Signature capture canvas
-- [x] Signature placement on PDF
-- [x] PDF export functionality
-- [x] Document management UI
-
-### Phase 4: OCR & Polish (Weeks 7-8) ✅
-- [x] ML Kit OCR integration
-- [x] Audit logging system
-- [x] Biometric authentication
-- [x] Navigation and theming
-
-## Future Enhancements
-
-- [ ] Scanned PDF signature detection with computer vision
-- [ ] Cloud backup (optional, user-controlled)
-- [ ] Multiple language support
-- [ ] Document templates library
-- [ ] Batch processing
-- [ ] Advanced field detection with ML
-- [ ] Wear OS companion app
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Contributing
-
-Contributions welcome! Please open an issue first to discuss proposed changes.
-
-## Support
-
-For issues or questions, please open a GitHub issue.
+MIT — see [LICENSE](LICENSE).

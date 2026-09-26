@@ -1,13 +1,13 @@
 package com.autodocfill.app.domain.pdf
 
-import android.content.Context
+import android.util.Log
 import com.autodocfill.app.data.model.FieldMapping
+import com.autodocfill.app.data.model.FieldType
 import com.itextpdf.forms.PdfAcroForm
 import com.itextpdf.forms.fields.PdfFormField
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.PdfWriter
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -18,125 +18,105 @@ import javax.inject.Singleton
  * PDF processor for filling and exporting PDF documents
  */
 @Singleton
-class PdfProcessor @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
-    
+class PdfProcessor @Inject constructor() {
+
     /**
-     * Fill PDF fields with values from field mappings
+     * Fill PDF fields with values from field mappings and write the result to [outputPdfPath].
+     *
+     * @return the number of fields written, or null if the PDF could not be written
      */
     suspend fun fillPdfFields(
         originalPdfPath: String,
         outputPdfPath: String,
         fieldMappings: List<FieldMapping>
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Int? = withContext(Dispatchers.IO) {
+        val originalFile = File(originalPdfPath)
+        val outputFile = File(outputPdfPath)
+        require(originalFile.canonicalPath != outputFile.canonicalPath) {
+            "Output path must differ from the original PDF"
+        }
+        outputFile.parentFile?.mkdirs()
+
         try {
-            val originalFile = File(originalPdfPath)
-            val outputFile = File(outputPdfPath)
-            
-            // Ensure output directory exists
-            outputFile.parentFile?.mkdirs()
-            
-            val pdfReader = PdfReader(originalFile)
-            val pdfWriter = PdfWriter(outputFile)
-            val pdfDocument = PdfDocument(pdfReader, pdfWriter)
-            val acroForm = PdfAcroForm.getAcroForm(pdfDocument, true)
-            
-            if (acroForm != null) {
-                // Fill each field
-                fieldMappings.forEach { mapping ->
-                    if (mapping.finalValue.isNotEmpty()) {
-                        val field = acroForm.getField(mapping.fieldName)
-                        if (field != null) {
-                            fillField(field, mapping)
+            var filledCount = 0
+            PdfDocument(PdfReader(originalFile), PdfWriter(outputFile)).use { pdfDocument ->
+                val acroForm = PdfAcroForm.getAcroForm(pdfDocument, false)
+                if (acroForm != null) {
+                    fieldMappings
+                        .filter { it.finalValue.isNotEmpty() && !it.isReadOnly }
+                        .forEach { mapping ->
+                            val field = acroForm.getField(mapping.fieldName)
+                            if (field != null && fillField(field, mapping)) {
+                                filledCount++
+                            }
                         }
-                    }
                 }
-                
-                // Flatten form to prevent further editing (optional)
-                // acroForm.flattenFields()
             }
-            
-            pdfDocument.close()
-            true
-            
+            filledCount
         } catch (e: Exception) {
-            e.printStackTrace()
-            false
+            Log.e(TAG, "Failed to fill $originalPdfPath", e)
+            outputFile.delete()
+            null
         }
     }
-    
+
     /**
      * Fill individual field based on type
      */
-    private fun fillField(field: PdfFormField, mapping: FieldMapping) {
-        try {
+    private fun fillField(field: PdfFormField, mapping: FieldMapping): Boolean {
+        return try {
             when (mapping.fieldType) {
-                com.autodocfill.app.data.model.FieldType.TEXT,
-                com.autodocfill.app.data.model.FieldType.DATE -> {
-                    field.setValue(mapping.finalValue)
+                FieldType.CHECKBOX -> {
+                    val checked = mapping.finalValue.lowercase() in setOf("yes", "true", "1", "on", "x")
+                    // A checkbox's "on" value is whatever appearance state the form defines (often "Yes" or "On")
+                    val onState = field.appearanceStates.firstOrNull { it != "Off" } ?: "Yes"
+                    field.setValue(if (checked) onState else "Off")
                 }
-                com.autodocfill.app.data.model.FieldType.CHECKBOX -> {
-                    if (mapping.finalValue.equals("yes", ignoreCase = true) ||
-                        mapping.finalValue.equals("true", ignoreCase = true)) {
-                        field.setValue("Yes")
-                    }
-                }
-                com.autodocfill.app.data.model.FieldType.RADIO_BUTTON -> {
-                    field.setValue(mapping.finalValue)
-                }
-                else -> {
-                    field.setValue(mapping.finalValue)
-                }
+                FieldType.SIGNATURE -> return false // Signatures are drawn by SignaturePlacer
+                else -> field.setValue(mapping.finalValue)
             }
+            true
         } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-    
-    /**
-     * Check if PDF is fillable (has AcroForm)
-     */
-    suspend fun isPdfFillable(pdfPath: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val pdfFile = File(pdfPath)
-            val pdfReader = PdfReader(pdfFile)
-            val pdfDocument = PdfDocument(pdfReader)
-            val acroForm = PdfAcroForm.getAcroForm(pdfDocument, false)
-            val isFillable = acroForm != null && acroForm.formFields.isNotEmpty()
-            pdfDocument.close()
-            isFillable
-        } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w(TAG, "Could not fill field ${mapping.fieldName}", e)
             false
         }
     }
-    
+
+    /**
+     * Check if PDF is fillable (has AcroForm fields)
+     */
+    suspend fun isPdfFillable(pdfPath: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            PdfDocument(PdfReader(File(pdfPath))).use { pdfDocument ->
+                val acroForm = PdfAcroForm.getAcroForm(pdfDocument, false)
+                acroForm != null && acroForm.formFields.isNotEmpty()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read $pdfPath", e)
+            false
+        }
+    }
+
     /**
      * Get page count from PDF
      */
     suspend fun getPageCount(pdfPath: String): Int = withContext(Dispatchers.IO) {
         try {
-            val pdfFile = File(pdfPath)
-            val pdfReader = PdfReader(pdfFile)
-            val pdfDocument = PdfDocument(pdfReader)
-            val count = pdfDocument.numberOfPages
-            pdfDocument.close()
-            count
+            PdfDocument(PdfReader(File(pdfPath))).use { it.numberOfPages }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to read $pdfPath", e)
             0
         }
     }
-    
+
     /**
      * Get file size
      */
     suspend fun getFileSize(pdfPath: String): Long = withContext(Dispatchers.IO) {
-        try {
-            File(pdfPath).length()
-        } catch (e: Exception) {
-            0L
-        }
+        File(pdfPath).length()
+    }
+
+    private companion object {
+        const val TAG = "PdfProcessor"
     }
 }

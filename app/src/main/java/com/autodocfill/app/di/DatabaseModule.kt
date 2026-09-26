@@ -9,6 +9,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.security.SecureRandom
 import javax.inject.Singleton
 
 /**
@@ -53,7 +54,8 @@ object DatabaseModule {
         // Get or create database passphrase
         val passphrase = encryptedPrefs.getString(KEY_DB_PASSPHRASE, null)
             ?: generatePassphrase().also {
-                encryptedPrefs.edit().putString(KEY_DB_PASSPHRASE, it).apply()
+                // commit() so the key is on disk before the database is created with it
+                encryptedPrefs.edit().putString(KEY_DB_PASSPHRASE, it).commit()
             }
         
         return AppDatabase.getInstance(context, passphrase)
@@ -73,8 +75,9 @@ object DatabaseModule {
     
     private fun generatePassphrase(): String {
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
+        val random = SecureRandom()
         return (1..32)
-            .map { chars.random() }
+            .map { chars[random.nextInt(chars.length)] }
             .joinToString("")
     }
 }

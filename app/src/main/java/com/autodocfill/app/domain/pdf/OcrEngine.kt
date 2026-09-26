@@ -1,14 +1,16 @@
 package com.autodocfill.app.domain.pdf
 
-import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import android.util.Log
+import com.autodocfill.app.data.model.ConfidenceLevel
 import com.autodocfill.app.data.model.FieldMapping
+import com.autodocfill.app.data.model.FieldType
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -21,9 +23,7 @@ import javax.inject.Singleton
  * Extracts text from non-fillable (scanned) PDF documents
  */
 @Singleton
-class OcrEngine @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
+class OcrEngine @Inject constructor() {
     
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     
@@ -31,56 +31,43 @@ class OcrEngine @Inject constructor(
      * Process scanned PDF and extract text using OCR
      */
     suspend fun processScannedPdf(pdfPath: String, documentId: Long): List<FieldMapping> = withContext(Dispatchers.IO) {
-        val fieldMappings = mutableListOf<FieldMapping>()
-        
-        try {
-            val pdfFile = File(pdfPath)
-            if (!pdfFile.exists()) {
-                return@withContext emptyList()
-            }
-            
-            val parcelFileDescriptor = ParcelFileDescriptor.open(
-                pdfFile,
-                ParcelFileDescriptor.MODE_READ_ONLY
-            )
-            
-            val pdfRenderer = PdfRenderer(parcelFileDescriptor)
-            val pageCount = pdfRenderer.pageCount
-            
-            // Process each page
-            for (pageIndex in 0 until pageCount) {
-                val page = pdfRenderer.openPage(pageIndex)
-                
-                // Render page to bitmap
-                val bitmap = Bitmap.createBitmap(
-                    page.width * 2, // Higher resolution for better OCR
-                    page.height * 2,
-                    Bitmap.Config.ARGB_8888
-                )
-                
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                
-                // Extract text using ML Kit
-                val extractedText = extractTextFromBitmap(bitmap)
-                
-                // Parse extracted text to find potential fields
-                val pageMappings = parseExtractedText(extractedText, documentId, pageIndex)
-                fieldMappings.addAll(pageMappings)
-                
-                page.close()
-                bitmap.recycle()
-            }
-            
-            pdfRenderer.close()
-            parcelFileDescriptor.close()
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val pdfFile = File(pdfPath)
+        if (!pdfFile.exists()) {
+            return@withContext emptyList()
         }
-        
+
+        val fieldMappings = mutableListOf<FieldMapping>()
+        try {
+            ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { fileDescriptor ->
+                PdfRenderer(fileDescriptor).use { pdfRenderer ->
+                    for (pageIndex in 0 until pdfRenderer.pageCount) {
+                        val extractedText = pdfRenderer.openPage(pageIndex).use { page ->
+                            // Render at 2x for better OCR accuracy, on a white background
+                            // (PDF pages are transparent by default)
+                            val bitmap = Bitmap.createBitmap(
+                                page.width * 2,
+                                page.height * 2,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            try {
+                                bitmap.eraseColor(Color.WHITE)
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                extractTextFromBitmap(bitmap)
+                            } finally {
+                                bitmap.recycle()
+                            }
+                        }
+                        fieldMappings.addAll(parseExtractedText(extractedText, documentId, pageIndex))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "OCR failed for $pdfPath", e)
+        }
+
         fieldMappings
     }
-    
+
     /**
      * Extract text from bitmap using ML Kit OCR
      */
@@ -90,7 +77,7 @@ class OcrEngine @Inject constructor(
             val result = textRecognizer.process(inputImage).await()
             result.text
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Text recognition failed", e)
             ""
         }
     }
@@ -104,49 +91,39 @@ class OcrEngine @Inject constructor(
         documentId: Long,
         pageIndex: Int
     ): List<FieldMapping> {
-        val fieldMappings = mutableListOf<FieldMapping>()
-        val lines = text.split("\n")
-        
-        // Common field patterns
-        val fieldPatterns = mapOf(
-            Regex("(?i)name\\s*[:_]?\\s*$") to "fullName",
-            Regex("(?i)first\\s*name\\s*[:_]?\\s*$") to "firstName",
-            Regex("(?i)last\\s*name\\s*[:_]?\\s*$") to "lastName",
-            Regex("(?i)email\\s*[:_]?\\s*$") to "email",
-            Regex("(?i)phone\\s*[:_]?\\s*$") to "phoneNumber",
-            Regex("(?i)address\\s*[:_]?\\s*$") to "addressLine1",
-            Regex("(?i)city\\s*[:_]?\\s*$") to "city",
-            Regex("(?i)state\\s*[:_]?\\s*$") to "state",
-            Regex("(?i)zip\\s*[:_]?\\s*$") to "zipCode",
-            Regex("(?i)date\\s*of\\s*birth\\s*[:_]?\\s*$") to "dateOfBirth",
-            Regex("(?i)signature\\s*[:_]?\\s*$") to "signaturePath"
-        )
-        
-        lines.forEachIndexed { index, line ->
-            fieldPatterns.forEach { (pattern, profileKey) ->
-                if (pattern.containsMatchIn(line)) {
-                    val fieldMapping = FieldMapping(
-                        documentId = documentId,
-                        fieldName = line.trim(),
-                        fieldType = com.autodocfill.app.data.model.FieldType.TEXT,
-                        fieldPage = pageIndex,
-                        profileKey = profileKey,
-                        confidenceScore = 0.7f, // OCR has lower confidence
-                        confidenceLevel = com.autodocfill.app.data.model.ConfidenceLevel.MEDIUM,
-                        needsReview = true
-                    )
-                    fieldMappings.add(fieldMapping)
-                }
+        // Only lines that look like a label waiting for a value, e.g. "First Name: ____"
+        val labelPattern = Regex("^(.{2,40}?)\\s*[:_]+[\\s_.]*$")
+
+        return text.lines()
+            .map { it.trim() }
+            .mapNotNull { line -> labelPattern.find(line)?.groupValues?.get(1)?.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .mapNotNull { label ->
+                val profileKey = FieldMatcher.mapToProfileKey(label)
+                if (profileKey == FieldMatcher.UNKNOWN_KEY) return@mapNotNull null
+                FieldMapping(
+                    documentId = documentId,
+                    fieldName = label,
+                    fieldType = if (profileKey == FieldMatcher.SIGNATURE_KEY) FieldType.SIGNATURE else FieldType.TEXT,
+                    fieldPage = pageIndex,
+                    profileKey = profileKey,
+                    confidenceScore = 0.7f, // OCR has lower confidence
+                    confidenceLevel = ConfidenceLevel.MEDIUM,
+                    isSensitive = FieldMatcher.isSensitive(profileKey),
+                    needsReview = true
+                )
             }
-        }
-        
-        return fieldMappings
     }
-    
+
     /**
      * Clean up resources
      */
     fun cleanup() {
         textRecognizer.close()
+    }
+
+    private companion object {
+        const val TAG = "OcrEngine"
     }
 }

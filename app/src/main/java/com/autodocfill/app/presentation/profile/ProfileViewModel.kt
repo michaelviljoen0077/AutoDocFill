@@ -20,25 +20,18 @@ class ProfileViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
     
-    val profiles: StateFlow<List<Profile>> = profileRepository.getAllActiveProfiles()
+    val profiles: StateFlow<List<Profile>> = profileRepository.getAllProfiles()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
     
-    val activeProfile: StateFlow<Profile?> = profileRepository.getActiveProfile()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
-        )
-    
     fun createProfile(profile: Profile) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
-                val id = profileRepository.createProfile(profile)
+                profileRepository.createProfile(profile)
                 _uiState.update { 
                     it.copy(
                         isLoading = false,

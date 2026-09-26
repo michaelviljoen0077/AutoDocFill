@@ -1,13 +1,10 @@
 package com.autodocfill.app.presentation.navigation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -19,12 +16,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.autodocfill.app.presentation.document.DocumentListScreen
 import com.autodocfill.app.presentation.document.ManualEditScreen
+import com.autodocfill.app.presentation.history.HistoryScreen
 import com.autodocfill.app.presentation.profile.ProfileListScreen
 
 /**
  * Main navigation component with bottom navigation
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AutoDocFillNavigation() {
     val navController = rememberNavController()
@@ -72,9 +69,6 @@ fun AutoDocFillNavigation() {
             composable(Screen.History.route) {
                 HistoryScreen()
             }
-            composable(Screen.Settings.route) {
-                SettingsScreen()
-            }
             composable(
                 route = "manual_edit/{documentId}",
                 arguments = listOf(navArgument("documentId") { type = NavType.LongType })
@@ -95,38 +89,5 @@ fun AutoDocFillNavigation() {
 enum class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Documents("documents", "Documents", Icons.Filled.Description),
     Profile("profile", "Profile", Icons.Filled.Person),
-    History("history", "History", Icons.Filled.History),
-    Settings("settings", "Settings", Icons.Filled.Settings)
+    History("history", "History", Icons.Filled.History)
 }
-
-/**
- * Placeholder screens
- */
-@Composable
-fun HistoryScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            "History Screen - Coming Soon",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-fun SettingsScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            "Settings Screen - Coming Soon",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-

@@ -4,8 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -71,19 +69,3 @@ class SignatureManager @Inject constructor(
         return bitmap
     }
 }
-
-/**
- * Data class to hold signature drawing state
- */
-data class SignatureDrawingState(
-    val paths: List<PathData> = emptyList(),
-    val currentPath: PathData? = null
-)
-
-/**
- * Data class for path information
- */
-data class PathData(
-    val path: Path,
-    val paint: Paint
-)

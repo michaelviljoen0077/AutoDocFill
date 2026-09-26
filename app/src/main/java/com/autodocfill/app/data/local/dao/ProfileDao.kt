@@ -10,8 +10,8 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ProfileDao {
     
-    @Query("SELECT * FROM profiles WHERE isActive = 1 ORDER BY updatedAt DESC")
-    fun getAllActiveProfiles(): Flow<List<Profile>>
+    @Query("SELECT * FROM profiles ORDER BY updatedAt DESC")
+    fun getAllProfiles(): Flow<List<Profile>>
     
     @Query("SELECT * FROM profiles WHERE id = :profileId")
     fun getProfileById(profileId: Long): Flow<Profile?>
@@ -22,7 +22,7 @@ interface ProfileDao {
     @Query("SELECT * FROM profiles WHERE isActive = 1 LIMIT 1")
     fun getActiveProfile(): Flow<Profile?>
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertProfile(profile: Profile): Long
     
     @Update
@@ -42,6 +42,12 @@ interface ProfileDao {
     
     @Query("SELECT COUNT(*) FROM profiles WHERE isActive = 1")
     suspend fun getActiveProfileCount(): Int
+
+    /**
+     * Make [profileId] the only active profile (the one used for autofill).
+     */
+    @Query("UPDATE profiles SET isActive = CASE WHEN id = :profileId THEN 1 ELSE 0 END")
+    suspend fun setActiveProfile(profileId: Long)
     
     @Query("DELETE FROM profiles WHERE id = :profileId")
     suspend fun deleteProfileById(profileId: Long)

@@ -31,16 +31,11 @@ fun ManualEditScreen(
     navController: NavController,
     viewModel: DocumentViewModel = hiltViewModel()
 ) {
-    var fieldMappings by remember { mutableStateOf<List<FieldMapping>>(emptyList()) }
+    val fieldMappings by remember(documentId) { viewModel.getFieldMappings(documentId) }
+        .collectAsState(initial = emptyList())
     var editingField by remember { mutableStateOf<FieldMapping?>(null) }
     var searchQuery by remember { mutableStateOf("") }
-    
-    // Load field mappings
-    LaunchedEffect(documentId) {
-        // In real implementation, load from repository
-        // fieldMappings = viewModel.getFieldMappings(documentId)
-    }
-    
+
     val filteredFields = remember(fieldMappings, searchQuery) {
         if (searchQuery.isBlank()) {
             fieldMappings
@@ -48,7 +43,7 @@ fun ManualEditScreen(
             fieldMappings.filter { 
                 it.fieldName.contains(searchQuery, ignoreCase = true) ||
                 it.profileKey.contains(searchQuery, ignoreCase = true) ||
-                (it.finalValue.contains(searchQuery, ignoreCase = true) == true)
+                it.finalValue.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -69,11 +64,6 @@ fun ManualEditScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(Icons.Filled.ArrowBack, "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { /* Save all changes */ }) {
-                        Icon(Icons.Filled.Save, "Save")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -129,13 +119,13 @@ fun ManualEditScreen(
                 StatCard(
                     icon = Icons.Outlined.CheckCircle,
                     label = "Filled",
-                    value = fieldMappings.count { !it.finalValue.isNullOrBlank() }.toString(),
+                    value = fieldMappings.count { it.finalValue.isNotBlank() }.toString(),
                     color = MaterialTheme.colorScheme.tertiary
                 )
                 StatCard(
                     icon = Icons.Outlined.RadioButtonUnchecked,
                     label = "Empty",
-                    value = fieldMappings.count { it.finalValue.isNullOrBlank() }.toString(),
+                    value = fieldMappings.count { it.finalValue.isBlank() }.toString(),
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
@@ -171,7 +161,7 @@ fun ManualEditScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredFields) { field ->
+                    items(filteredFields, key = { it.id }) { field ->
                         FieldMappingCard(
                             field = field,
                             onEditClick = { editingField = field }
@@ -190,10 +180,7 @@ fun ManualEditScreen(
             field = field,
             onDismiss = { editingField = null },
             onSave = { updatedField ->
-                // Save updated field
-                fieldMappings = fieldMappings.map { 
-                    if (it.id == updatedField.id) updatedField else it 
-                }
+                viewModel.updateField(updatedField)
                 editingField = null
             }
         )
@@ -374,8 +361,8 @@ fun EditFieldDialog(
     onDismiss: () -> Unit,
     onSave: (FieldMapping) -> Unit
 ) {
-    var value by remember { mutableStateOf(field.finalValue) }
-    var mappingKey by remember { mutableStateOf(field.profileKey) }
+    var value by remember(field.id) { mutableStateOf(field.finalValue) }
+    var mappingKey by remember(field.id) { mutableStateOf(field.profileKey) }
     
     Dialog(onDismissRequest = onDismiss) {
         Surface(

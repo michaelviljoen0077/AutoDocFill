@@ -1,6 +1,10 @@
 package com.autodocfill.app.presentation.document
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -18,10 +22,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.autodocfill.app.data.model.Document
 import com.autodocfill.app.data.model.DocumentStatus
+import com.autodocfill.app.presentation.signature.SignatureCanvas
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -38,28 +46,34 @@ fun DocumentListScreen(
     val context = LocalContext.current
     val documents by viewModel.documents.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
-    
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var showDeleteConfirm by remember { mutableStateOf<Document?>(null) }
-    
+    var signingDocument by remember { mutableStateOf<Document?>(null) }
+
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            val fileName = "document_${System.currentTimeMillis()}.pdf"
-            val outputFile = File(context.filesDir, "pdfs/$fileName")
-            outputFile.parentFile?.mkdirs()
-            
-            inputStream?.use { input ->
-                outputFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
+        uri?.let { viewModel.importPdf(it) }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is DocumentEvent.OpenPdf -> context.openPdf(event.file)
+                is DocumentEvent.SharePdf -> context.sharePdf(event.file, event.title)
             }
-            
-            viewModel.processDocument(outputFile.absolutePath, fileName)
         }
     }
-    
+
+    val message = uiState.errorMessage ?: uiState.successMessage
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearMessages()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -78,6 +92,7 @@ fun DocumentListScreen(
                 )
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { pdfPickerLauncher.launch("application/pdf") },
@@ -112,6 +127,7 @@ fun DocumentListScreen(
                                     navController.navigate("manual_edit/${document.id}")
                                 },
                                 onExportClick = { viewModel.exportDocument(document) },
+                                onSignClick = { signingDocument = document },
                                 onDeleteClick = { showDeleteConfirm = document },
                                 onRetryClick = { viewModel.retryProcessing(document) }
                             )
@@ -119,29 +135,6 @@ fun DocumentListScreen(
                         
                         item { Spacer(modifier = Modifier.height(80.dp)) }
                     }
-                }
-            }
-            
-            // Success/Error messages
-            uiState.successMessage?.let { message ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(message)
-                }
-            }
-            
-            uiState.errorMessage?.let { message ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Text(message, color = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
             
@@ -202,6 +195,45 @@ fun DocumentListScreen(
             }
         )
     }
+
+    // Signature capture
+    signingDocument?.let { document ->
+        Dialog(
+            onDismissRequest = { signingDocument = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            SignatureCanvas(
+                onSignatureComplete = { bitmap ->
+                    viewModel.signDocument(document, bitmap)
+                    signingDocument = null
+                },
+                onCancel = { signingDocument = null }
+            )
+        }
+    }
+}
+
+private fun Context.pdfUri(file: File): Uri =
+    FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+
+private fun Context.openPdf(file: File) {
+    val intent = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(pdfUri(file), "application/pdf")
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(this, "No app available to open PDFs", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun Context.sharePdf(file: File, title: String) {
+    val intent = Intent(Intent.ACTION_SEND)
+        .setType("application/pdf")
+        .putExtra(Intent.EXTRA_STREAM, pdfUri(file))
+        .putExtra(Intent.EXTRA_SUBJECT, title)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    startActivity(Intent.createChooser(intent, "Save or share PDF"))
 }
 
 @Composable
@@ -252,6 +284,7 @@ fun ModernDocumentCard(
     onAutofillClick: () -> Unit,
     onManualEditClick: () -> Unit,
     onExportClick: () -> Unit,
+    onSignClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onRetryClick: () -> Unit
 ) {
@@ -350,8 +383,7 @@ fun ModernDocumentCard(
                             leadingIcon = { Icon(Icons.Outlined.Edit, null) }
                         )
                         
-                        if (document.status == DocumentStatus.FILLED || 
-                            document.status == DocumentStatus.EXPORTED) {
+                        if (document.isFillable && document.detectedFieldsCount > 0) {
                             DropdownMenuItem(
                                 text = { Text("Export") },
                                 onClick = {
@@ -359,6 +391,14 @@ fun ModernDocumentCard(
                                     showMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Outlined.Download, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Sign") },
+                                onClick = {
+                                    onSignClick()
+                                    showMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.Draw, null) }
                             )
                         }
                         

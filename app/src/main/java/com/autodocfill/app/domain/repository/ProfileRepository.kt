@@ -15,8 +15,8 @@ class ProfileRepository @Inject constructor(
     private val profileDao: ProfileDao
 ) {
     
-    fun getAllActiveProfiles(): Flow<List<Profile>> {
-        return profileDao.getAllActiveProfiles()
+    fun getAllProfiles(): Flow<List<Profile>> {
+        return profileDao.getAllProfiles()
     }
     
     fun getProfileById(profileId: Long): Flow<Profile?> {
@@ -32,9 +32,12 @@ class ProfileRepository @Inject constructor(
     }
     
     suspend fun createProfile(profile: Profile): Long {
+        val now = System.currentTimeMillis()
         val updatedProfile = profile.copy(
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
+            createdAt = now,
+            updatedAt = now,
+            // The first profile becomes the active one; later ones must be activated explicitly
+            isActive = profileDao.getActiveProfileCount() == 0
         )
         return profileDao.insertProfile(updatedProfile)
     }
@@ -59,10 +62,7 @@ class ProfileRepository @Inject constructor(
     }
     
     suspend fun setActiveProfile(profileId: Long) {
-        // First deactivate all profiles
-        profileDao.deactivateAllProfiles()
-        // Then activate the selected one
-        profileDao.activateProfile(profileId)
+        profileDao.setActiveProfile(profileId)
     }
     
     suspend fun getActiveProfileCount(): Int {
